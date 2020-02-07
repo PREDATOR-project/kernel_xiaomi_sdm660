@@ -1,4 +1,5 @@
-/* Copyright (c) 2012-2020, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2019, The Linux Foundation. All rights reserved.
+ * Copyright (C) 2019 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -1705,7 +1706,7 @@ static int mdss_dsi_unblank(struct mdss_panel_data *pdata)
 		mipi->vsync_enable && mipi->hw_vsync_mode) {
 		mdss_dsi_set_tear_on(ctrl_pdata);
 		if (mdss_dsi_is_te_based_esd(ctrl_pdata))
-			panel_update_te_irq(pdata, true);
+			enable_irq(gpio_to_irq(ctrl_pdata->disp_te_gpio));
 	}
 
 	ctrl_pdata->ctrl_state |= CTRL_STATE_PANEL_INIT;
@@ -1776,8 +1777,9 @@ static int mdss_dsi_blank(struct mdss_panel_data *pdata, int power_state)
 	if ((pdata->panel_info.type == MIPI_CMD_PANEL) &&
 		mipi->vsync_enable && mipi->hw_vsync_mode) {
 		if (mdss_dsi_is_te_based_esd(ctrl_pdata)) {
-			panel_update_te_irq(pdata, false);
-			atomic_dec(&ctrl_pdata->te_irq_ready);
+				disable_irq(gpio_to_irq(
+					ctrl_pdata->disp_te_gpio));
+				atomic_dec(&ctrl_pdata->te_irq_ready);
 		}
 		mdss_dsi_set_tear_off(ctrl_pdata);
 	}
@@ -3689,7 +3691,6 @@ static int mdss_dsi_ctrl_probe(struct platform_device *pdev)
 
 	pdata = &ctrl_pdata->panel_data;
 	init_completion(&pdata->te_done);
-	mutex_init(&pdata->te_mutex);
 	if (pdata->panel_info.type == MIPI_CMD_PANEL) {
 		if (!te_irq_registered) {
 			rc = devm_request_irq(&pdev->dev,
@@ -4568,6 +4569,14 @@ static int mdss_dsi_parse_gpio_params(struct platform_device *ctrl_pdev,
 	if (!gpio_is_valid(ctrl_pdata->rst_gpio))
 		pr_err("%s:%d, reset gpio not specified\n",
 						__func__, __LINE__);
+
+#ifdef CONFIG_MACH_MI
+	ctrl_pdata->tp_rst_gpio = of_get_named_gpio(ctrl_pdev->dev.of_node,
+			 "qcom,platform-tp-reset-gpio", 0);
+	if (!gpio_is_valid(ctrl_pdata->tp_rst_gpio))
+		pr_err("%s:%d, tp reset gpio not specified\n",
+						__func__, __LINE__);
+#endif
 
 	ctrl_pdata->lcd_mode_sel_gpio = of_get_named_gpio(
 			ctrl_pdev->dev.of_node, "qcom,panel-mode-gpio", 0);
